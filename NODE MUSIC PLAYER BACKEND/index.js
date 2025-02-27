@@ -1,12 +1,22 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const port = 3000;
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
+
+// Serve static files from 'uploads/' directory
+app.use('/uploads', express.static('uploads'));
+
+const uploadDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 // Set up storage for uploaded files
 const storage = multer.diskStorage({
