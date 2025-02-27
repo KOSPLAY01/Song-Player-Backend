@@ -10,18 +10,24 @@ const port = 3000;
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Serve static files from 'uploads/' directory
-app.use('/uploads', express.static('uploads'));
+// Ensure 'uploads/' and 'uploads/images/' exist
+const uploadDirs = ['uploads/songs', 'uploads/images'];
+uploadDirs.forEach(dir => {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+});
 
-const uploadDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Set up storage for uploaded files
+// Configure Multer Storage for Songs & Images
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads/'); // Store files in 'uploads/' directory
+        if (file.mimetype.startsWith('audio/')) {
+            cb(null, 'uploads/songs/');
+        } else if (file.mimetype.startsWith('image/')) {
+            cb(null, 'uploads/images/');
+        } else {
+            cb(new Error('Invalid file type'), null);
+        }
     },
     filename: (req, file, cb) => {
         cb(null, `${Date.now()}-${file.originalname}`);
@@ -57,10 +63,10 @@ app.get("/filter", (req, res) => {
     res.json(filteredSongs);
 });
 
-// ADD A SONG WITH FILE UPLOAD
-app.post("/create", upload.single('songFile'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ message: "No file uploaded" });
+// ADD A SONG WITH AUDIO & IMAGE UPLOAD
+app.post("/create", upload.fields([{ name: 'songFile', maxCount: 1 }, { name: 'coverImage', maxCount: 1 }]), (req, res) => {
+    if (!req.files['songFile'] || !req.files['coverImage']) {
+        return res.status(400).json({ message: "Both song file and cover image are required." });
     }
 
     const newSong = {
@@ -69,15 +75,16 @@ app.post("/create", upload.single('songFile'), (req, res) => {
         artist: req.body.artist,
         songGenre: req.body.songGenre,
         songLength: req.body.songLength,
-        songFile: req.file.path // Save file path
+        songFile: req.files['songFile'][0].path,  // Save song file path
+        coverImage: req.files['coverImage'][0].path // Save cover image path
     };
 
     songs.push(newSong);
     res.status(201).json(newSong);
 });
 
-// EDIT A SONG (Metadata & Optional File Upload)
-app.patch("/update/:id", upload.single('songFile'), (req, res) => {
+// EDIT A SONG (Metadata, Audio, and Image Upload)
+app.patch("/update/:id", upload.fields([{ name: 'songFile', maxCount: 1 }, { name: 'coverImage', maxCount: 1 }]), (req, res) => {
     const songId = parseInt(req.params.id);
     const existingSong = songs.find(song => song.id === songId);
 
@@ -90,8 +97,12 @@ app.patch("/update/:id", upload.single('songFile'), (req, res) => {
     existingSong.songGenre = req.body.songGenre || existingSong.songGenre;
     existingSong.songLength = req.body.songLength || existingSong.songLength;
 
-    if (req.file) {
-        existingSong.songFile = req.file.path; // Update song file path if a new file is uploaded
+    if (req.files['songFile']) {
+        existingSong.songFile = req.files['songFile'][0].path;
+    }
+    
+    if (req.files['coverImage']) {
+        existingSong.coverImage = req.files['coverImage'][0].path;
     }
 
     res.status(200).json(existingSong);
